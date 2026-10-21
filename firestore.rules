@@ -1,0 +1,15 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 車両は cars/{車両No.7桁} に保存。ログインなしで使うため、URLを知っている人が読み書きできます。
+    match /cars/{carId} {
+      allow read: if true;
+      allow create, update: if carId.matches('^[0-9]{7}$')
+        && request.resource.data.model is string
+        && request.resource.data.model.size() > 0
+        && request.resource.data.model.size() <= 40
+        && request.resource.data.plate == carId;
+      allow delete: if true;
+    }
+  }
+}
