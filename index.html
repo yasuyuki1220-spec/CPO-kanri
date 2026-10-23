@@ -118,6 +118,11 @@ select{font:inherit;color:inherit;appearance:auto}
 .ib:disabled{opacity:.3}
 .ib.g{min-width:70px;font-size:12px}
 .subp{margin:4px 0 12px 10px;padding:6px 10px 10px;border-left:3px solid var(--line-strong);background:var(--surface-2);border-radius:8px}
+.grip{flex:none;width:34px;height:40px;display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--mute,#8a929b);touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none;border-radius:8px}
+.grip:active{background:var(--surface-2)}
+.mit{position:relative;background:var(--surface)}
+.mit.lift{z-index:5;box-shadow:0 10px 26px rgba(0,0,0,.28);border-radius:10px;transform-origin:center;opacity:.97}
+.mit.lift>.mrow{background:var(--surface);border-radius:10px}
 .msh{margin:18px 0 4px;font-size:14px;font-weight:900}
 input.small{min-height:38px;font-size:15px}
 .btn{min-height:44px;padding:8px 16px;border-radius:10px;border:1px solid var(--line);background:var(--surface);font-weight:700}
@@ -323,6 +328,16 @@ var DEFAULT_MASTER={
   colors:[['ソニッククォーツ','#e8e5de'],['ホワイトノーヴァGF','#f2f1ed'],['ブラックマイカ','#1b1d20'],['グラファイトブラックGF','#25282c'],['ソニッククロム','#8f949a'],['ソニックチタニウム','#cdb98a'],['ソニックイリジウム','#d8dce0'],['シルバーメタリック','#c3c8ce'],['アストログレーメタリック','#6b7078'],['ソニックカッパー','#8c5a3d'],['ディープアズールMM','#1e3f73'],['レッドスピネル','#8e1c26'],['パッショネイトイエロー','#e9c21c']].map(function(p){return {name:p[0],hex:p[1]}}),
   equip:['ムーンルーフ','フロントスポイラー','サイドスポイラー','リヤスポイラー']
 };
+function seriesFromModels(models){
+  var out=[],idx={};
+  models.forEach(function(m){
+    var k=(String(m.name).match(/^[A-Za-z]+/)||[m.name])[0];
+    if(!(k in idx)){idx[k]=out.length;out.push({name:k,models:[]})}
+    out[idx[k]].models.push({name:m.name,grades:Array.isArray(m.grades)?m.grades:[]});
+  });
+  return out;
+}
+DEFAULT_MASTER.series=seriesFromModels(DEFAULT_MASTER.models);
 var COLOR_PRESETS=DEFAULT_MASTER.colors.map(function(c){return [c.name,c.hex]});
 function shortColor(n){return String(n||'').replace(/ガラスフレーク/g,'GF').replace(/マイカメタリック/g,'MM')}
 var COLOR_KEYS=[[/クォーツ/,'#e8e5de'],[/クロム/,'#8f949a'],[/チタニウム/,'#cdb98a'],[/イリジウム/,'#d8dce0'],[/アストログレー/,'#6b7078'],[/カッパー/,'#8c5a3d'],[/アズール|ディープブルー/,'#1e3f73'],[/スピネル/,'#8e1c26'],[/グラファイト/,'#25282c'],[/ブラック|黒/,'#1b1d20'],[/シルバー|銀/,'#c3c8ce'],[/グレー|グレイ|灰|ガンメタ/,'#858b93'],[/レッド|赤|ワイン|ボルドー/,'#d2322d'],[/ブルー|青|紺|ネイビー/,'#2e63c8'],[/グリーン|緑|カーキ/,'#2e8a57'],[/ブラウン|茶/,'#7b5638'],[/ベージュ|ゴールド|シャンパン/,'#d6c19b'],[/イエロー|黄/,'#ebc41f'],[/オレンジ|橙/,'#ef8a2c'],[/パープル|紫/,'#7a55b3'],[/パール/,'#ebe6dc'],[/ホワイト|白/,'#f4f4f1']];
@@ -502,8 +517,13 @@ async function act(action,p){
 }
 function applyMaster(data){
   var m=clone(DEFAULT_MASTER);
-  if(data){['models','grades','colors','equip'].forEach(function(k){if(Array.isArray(data[k]))m[k]=data[k]})}
-  m.models=m.models.map(function(x){return {name:String(x.name||''),grades:Array.isArray(x.grades)?x.grades:[]}});
+  if(data){
+    ['grades','colors','equip'].forEach(function(k){if(Array.isArray(data[k]))m[k]=data[k]});
+    if(Array.isArray(data.series))m.series=data.series;
+    else if(Array.isArray(data.models))m.series=seriesFromModels(data.models);
+  }
+  m.series=m.series.map(function(s){return {name:String(s.name||''),models:(Array.isArray(s.models)?s.models:[]).map(function(x){return {name:String(x.name||''),grades:Array.isArray(x.grades)?x.grades:[]}})}});
+  m.models=[];m.series.forEach(function(s){s.models.forEach(function(x){m.models.push({name:x.name,grades:x.grades,series:s.name})})});
   state.master=m;
   COLOR_PRESETS=m.colors.map(function(c){return [c.name,c.hex]});
   EQUIP_PRESETS=m.equip.slice();
@@ -748,33 +768,43 @@ function updateNegUI(){
 function openForm(id){
   var c=id?findCar(id):null;
   form=c?{plate:c.plate||'',model:c.model||'',year:c.year||'',grade:c.grade||'',price:(c.price==null?'':String(c.price)),color:shortColor(c.color),equip:(c.equip||[]).slice(),kind:c.kind||'',km:(c.km==null?'':String(c.km))}:{plate:'',model:'',year:'',grade:'',price:'',color:'',equip:[],kind:'',km:''};
-  form.mo=!!(form.model&&modelList().indexOf(form.model)<0);
+  form.se=form.model?seriesOfModel(form.model):'';
+  form.so=!!(form.model&&!form.se);
+  form.mo=false;
   form.go=!!(form.grade&&gradeList(form.model).indexOf(form.grade)<0);
   sheetState={mode:'form',id:id||null};
   $('#sheet').innerHTML=formHTML();
   renderPickers();renderSwatches();renderTags();
   showSheet();
 }
-function modelList(){return (state.master.models||[]).map(function(m){return m.name})}
+function seriesList(){return (state.master.series||[]).map(function(s){return s.name})}
+function modelsOf(se){var s=(state.master.series||[]).filter(function(x){return x.name===se})[0];return s?s.models.map(function(m){return m.name}):[]}
+function seriesOfModel(model){var r='';(state.master.series||[]).forEach(function(s){if(!r&&s.models.some(function(m){return m.name===model}))r=s.name});return r}
 function gradeList(model){
   var m=(state.master.models||[]).filter(function(x){return x.name===model})[0];
   return (m&&m.grades&&m.grades.length)?m.grades:(state.master.grades||[]);
 }
-function pickHTML(kind,list,val,isOther,ph,inputId,other){
-  return '<select id="f-'+kind+'sel" data-sel="'+kind+'"><option value="">'+ph+'</option>'+list.map(function(o){return '<option'+(!isOther&&o===val?' selected':'')+'>'+esc(o)+'</option>'}).join('')+'<option value="__other__"'+(isOther?' selected':'')+'>その他（手入力）</option></select>'+
-    '<input id="'+inputId+'" data-f="'+kind+'" type="text" placeholder="'+other+'" autocomplete="off" style="margin-top:6px'+(isOther?'':';display:none')+'" value="'+esc(isOther?val:'')+'">';
+function optsHTML(list,val,isOther,ph){
+  return '<option value="">'+ph+'</option>'+list.map(function(o){return '<option'+(!isOther&&o===val?' selected':'')+'>'+esc(o)+'</option>'}).join('')+'<option value="__other__"'+(isOther?' selected':'')+'>その他（手入力）</option>';
+}
+function txtHTML(id,f,ph,val,show){
+  return '<input id="'+id+'" data-f="'+f+'" type="text" placeholder="'+ph+'" autocomplete="off" style="margin-top:6px'+(show?'':';display:none')+'" value="'+esc(show?val:'')+'">';
 }
 function renderPickers(){
-  var m=$('#mwrap'),g=$('#gwrap');
-  if(m)m.innerHTML=pickHTML('model',modelList(),form.model,form.mo,'車種を選択してください','f-model','車種を入力');
-  if(g)g.innerHTML=pickHTML('grade',gradeList(form.model),form.grade,form.go,'選択してください','f-grade','グレードを入力');
+  var s=$('#swrap'),m=$('#mwrap'),g=$('#gwrap');
+  if(s)s.innerHTML='<select id="f-seriessel" data-sel="series" aria-label="車種">'+optsHTML(seriesList(),form.se,form.so,'車種')+'</select>';
+  if(m){
+    if(form.so)m.innerHTML=txtHTML('f-model','model','モデルを入力',form.model,true);
+    else m.innerHTML='<select id="f-modelsel" data-sel="model" aria-label="モデル"'+(form.se?'':' disabled')+'>'+optsHTML(modelsOf(form.se),form.model,form.mo,form.se?'モデルを選択':'先に車種')+'</select>'+txtHTML('f-model','model','モデルを入力',form.model,form.mo);
+  }
+  if(g)g.innerHTML='<select id="f-gradesel" data-sel="grade" aria-label="グレード">'+optsHTML(gradeList(form.model),form.grade,form.go,'選択してください')+'</select>'+txtHTML('f-grade','grade','グレードを入力',form.grade,form.go);
 }
 function formHTML(){
   var f=form;
   return '<div class="sh-top"><h2 class="fh">'+(sheetState.id?'車両を編集':'車両を追加')+'</h2><span class="sp"></span><button class="btn btn-ghost sm" type="button" data-act="cancelForm">キャンセル</button></div>'+
   '<label class="fl" style="margin-top:0">区分</label><div class="chips" id="kindPick">'+[['CPO','CPO'],['UCAR','U-Car']].map(function(p){return '<button type="button" class="chip'+(f.kind===p[0]?' on':'')+'" data-act="pickKind" data-v="'+p[0]+'">'+p[1]+'</button>'}).join('')+'</div>'+
   '<label class="fl" for="f-plate">車両No.（社内管理番号・7桁）</label><input id="f-plate" data-f="plate" type="text" inputmode="numeric" maxlength="7" placeholder="1234567" autocomplete="off" value="'+esc(f.plate)+'">'+
-  '<label class="fl" for="f-modelsel">車種</label><div id="mwrap"></div>'+
+  '<label class="fl" for="f-seriessel">車種　<span style="font-weight:400">→　モデル</span></label><div class="row2"><div id="swrap"></div><div id="mwrap"></div></div>'+
   '<div class="row2"><div><label class="fl sm" for="f-year">年式</label><input id="f-year" data-f="year" class="small" type="text" placeholder="2021 / R3" autocomplete="off" value="'+esc(f.year)+'"></div>'+
   '<div><label class="fl sm" for="f-gradesel">グレード</label><div id="gwrap"></div></div></div>'+
   '<div class="row3"><div><label class="fl" for="f-price">金額（万円）</label><input id="f-price" data-f="price" type="number" inputmode="decimal" step="0.1" min="0" placeholder="198.0" value="'+esc(f.price)+'"></div>'+
@@ -882,54 +912,63 @@ function deleteCurrent(){
 }
 
 /* ---------- settings (master data) ---------- */
-var ms=null,msTabV='model',msOpenI=-1;
+var ms=null,msTabV='model',msOS=-1,msOM=-1;
 function openSettings(){
-  ms=clone(state.master);msTabV='model';msOpenI=-1;
+  ms=clone(state.master);msTabV='model';msOS=-1;msOM=-1;
   sheetState={mode:'settings',id:null};
   drawSettings();showSheet();
 }
-function msArr(l,m){
-  if(l==='models')return ms.models;
-  if(l==='grades')return (m===undefined||m===''||m==null)?ms.grades:ms.models[+m].grades;
+function msArr(l,s,m){
+  if(l==='series')return ms.series;
+  if(l==='models')return ms.series[+s].models;
+  if(l==='grades')return (s===undefined||s===''||s==null)?ms.grades:ms.series[+s].models[+m].grades;
   return ms[l];
 }
-function msRow(l,i,val,m,extra){
-  var n=msArr(l,m).length,ma=(m===undefined||m==null)?'':' data-m="'+m+'"';
-  return '<div class="mrow">'+extra+
-    '<button type="button" class="ib" data-act="msUp" data-l="'+l+'" data-i="'+i+'"'+ma+(i===0?' disabled':'')+' aria-label="上へ">▲</button>'+
-    '<button type="button" class="ib" data-act="msDown" data-l="'+l+'" data-i="'+i+'"'+ma+(i===n-1?' disabled':'')+' aria-label="下へ">▼</button>'+
-    '<button type="button" class="ib d" data-act="msDel" data-l="'+l+'" data-i="'+i+'"'+ma+' aria-label="削除">🗑</button></div>';
+function pa(l,s,m){return ' data-l="'+l+'"'+((s===undefined||s===null)?'':' data-s="'+s+'"')+((m===undefined||m===null)?'':' data-m="'+m+'"')}
+function textIn(l,i,val,s,m,k,ph){
+  return '<input type="text" data-ml="'+l+'" data-i="'+i+'"'+((s===undefined||s===null)?'':' data-s="'+s+'"')+((m===undefined||m===null)?'':' data-m="'+m+'"')+(k?' data-k="'+k+'"':'')+' value="'+esc(val)+'" placeholder="'+ph+'" autocomplete="off">';
 }
-function textIn(l,i,val,m,k,ph){
-  return '<input type="text" data-ml="'+l+'" data-i="'+i+'"'+((m===undefined||m==null)?'':' data-m="'+m+'"')+(k?' data-k="'+k+'"':'')+' value="'+esc(val)+'" placeholder="'+ph+'" autocomplete="off">';
+function mrow(l,i,s,m,mid){
+  return '<div class="mrow"><span class="grip" aria-label="長押しして動かすと並べ替え">≡</span>'+mid+'<button type="button" class="ib d" data-act="msDel" data-i="'+i+'"'+pa(l,s,m)+' aria-label="削除">🗑</button></div>';
 }
+function listOpen(l,s,m){return '<div class="mlist"'+pa(l,s,m)+'>'}
 function settingsHTML(){
   var h='<div class="sh-top"><h2 class="fh">選択肢の設定</h2><span class="sp"></span><button class="btn btn-ghost sm" type="button" data-act="msCancel">キャンセル</button></div>'+
-    '<div class="chips">'+[['model','車種・グレード'],['color','ボディカラー'],['equip','装備品']].map(function(t){return '<button type="button" class="chip'+(msTabV===t[0]?' on':'')+'" data-act="msTab" data-v="'+t[0]+'">'+t[1]+'</button>'}).join('')+'</div>';
+    '<div class="chips">'+[['model','車種・モデル・グレード'],['color','ボディカラー'],['equip','装備品']].map(function(t){return '<button type="button" class="chip'+(msTabV===t[0]?' on':'')+'" data-act="msTab" data-v="'+t[0]+'">'+t[1]+'</button>'}).join('')+'</div>'+
+    '<div class="note" style="margin-top:8px">左の「≡」を押したまま上下に動かすと並べ替えできます。</div>';
   if(msTabV==='model'){
-    h+='<div class="msh">車種（「グレード」を押すとその車種専用のグレードを設定）</div>';
-    ms.models.forEach(function(m,i){
-      h+=msRow('models',i,m.name,null,textIn('models',i,m.name,null,'name','車種名')+'<button type="button" class="ib g" data-act="msOpen" data-i="'+i+'">グレード'+(m.grades.length?'('+m.grades.length+')':'')+'</button>');
-      if(msOpenI===i){
-        h+='<div class="subp"><div class="note">'+esc(m.name||'この車種')+'のグレード（空なら共通グレードを使用）</div>';
-        m.grades.forEach(function(g,j){h+=msRow('grades',j,g,i,textIn('grades',j,g,i,'','グレード名'))});
-        h+='<button type="button" class="btn sm" data-act="msAdd" data-l="grades" data-m="'+i+'">＋ グレードを追加</button></div>';
+    h+='<div class="msh">車種（UX・NX・RXなど）</div>'+listOpen('series');
+    ms.series.forEach(function(se,i){
+      h+='<div class="mit" data-i="'+i+'">'+mrow('series',i,null,null,textIn('series',i,se.name,null,null,'name','車種名（例：RX）')+'<button type="button" class="ib g" data-act="msOpenS" data-i="'+i+'">モデル('+se.models.length+')</button>');
+      if(msOS===i){
+        h+='<div class="subp"><div class="note">'+esc(se.name||'この車種')+'のモデル（例：RX350h）</div>'+listOpen('models',i);
+        se.models.forEach(function(mo,j){
+          h+='<div class="mit" data-i="'+j+'">'+mrow('models',j,i,null,textIn('models',j,mo.name,i,null,'name','モデル名')+'<button type="button" class="ib g" data-act="msOpenM" data-i="'+j+'">グレード'+(mo.grades.length?'('+mo.grades.length+')':'')+'</button>');
+          if(msOM===j){
+            h+='<div class="subp"><div class="note">'+esc(mo.name||'このモデル')+'のグレード（空なら共通グレード）</div>'+listOpen('grades',null,j).replace('data-m="'+j+'"','data-s="'+i+'" data-m="'+j+'"');
+            mo.grades.forEach(function(g,k){h+='<div class="mit" data-i="'+k+'">'+mrow('grades',k,i,j,textIn('grades',k,g,i,j,'','グレード名'))+'</div>'});
+            h+='</div><button type="button" class="btn sm" data-act="msAdd" data-l="grades" data-s="'+i+'" data-m="'+j+'">＋ グレードを追加</button></div>';
+          }
+          h+='</div>';
+        });
+        h+='</div><button type="button" class="btn sm" data-act="msAdd" data-l="models" data-s="'+i+'">＋ モデルを追加</button></div>';
       }
+      h+='</div>';
     });
-    h+='<button type="button" class="btn sm" data-act="msAdd" data-l="models">＋ 車種を追加</button>';
-    h+='<div class="msh">共通グレード（車種専用が未設定のとき・その他の車種用）</div>';
-    ms.grades.forEach(function(g,j){h+=msRow('grades',j,g,null,textIn('grades',j,g,null,'','グレード名'))});
-    h+='<button type="button" class="btn sm" data-act="msAdd" data-l="grades">＋ 共通グレードを追加</button>';
+    h+='</div><button type="button" class="btn sm" data-act="msAdd" data-l="series">＋ 車種を追加</button>';
+    h+='<div class="msh">共通グレード（モデル専用が未設定のとき・その他用）</div>'+listOpen('grades');
+    ms.grades.forEach(function(g,j){h+='<div class="mit" data-i="'+j+'">'+mrow('grades',j,null,null,textIn('grades',j,g,null,null,'','グレード名'))+'</div>'});
+    h+='</div><button type="button" class="btn sm" data-act="msAdd" data-l="grades">＋ 共通グレードを追加</button>';
   }else if(msTabV==='color'){
-    h+='<div class="msh">ボディカラー（左の四角で色を選べます）</div>';
+    h+='<div class="msh">ボディカラー（左の四角で色を選べます）</div>'+listOpen('colors');
     ms.colors.forEach(function(c,i){
-      h+=msRow('colors',i,c.name,null,'<input type="color" data-ml="colors" data-i="'+i+'" data-k="hex" value="'+esc(/^#[0-9a-fA-F]{6}$/.test(c.hex)?c.hex:'#888888')+'">'+textIn('colors',i,c.name,null,'name','例：ホワイトノーヴァ(GF)'));
+      h+='<div class="mit" data-i="'+i+'">'+mrow('colors',i,null,null,'<input type="color" data-ml="colors" data-i="'+i+'" data-k="hex" value="'+esc(/^#[0-9a-fA-F]{6}$/.test(c.hex)?c.hex:'#888888')+'">'+textIn('colors',i,c.name,null,null,'name','例：ホワイトノーヴァ(GF)'))+'</div>';
     });
-    h+='<button type="button" class="btn sm" data-act="msAdd" data-l="colors">＋ 色を追加</button>';
+    h+='</div><button type="button" class="btn sm" data-act="msAdd" data-l="colors">＋ 色を追加</button>';
   }else{
-    h+='<div class="msh">装備品（車両追加画面にボタンで出ます）</div>';
-    ms.equip.forEach(function(e,i){h+=msRow('equip',i,e,null,textIn('equip',i,e,null,'','装備名'))});
-    h+='<button type="button" class="btn sm" data-act="msAdd" data-l="equip">＋ 装備を追加</button>';
+    h+='<div class="msh">装備品（車両追加画面にボタンで出ます）</div>'+listOpen('equip');
+    ms.equip.forEach(function(e,i){h+='<div class="mit" data-i="'+i+'">'+mrow('equip',i,null,null,textIn('equip',i,e,null,null,'','装備名'))+'</div>'});
+    h+='</div><button type="button" class="btn sm" data-act="msAdd" data-l="equip">＋ 装備を追加</button>';
     h+='<div class="note" style="margin-top:8px">フロント・サイド・リヤの3つのスポイラーがそろうと「フルスポイラー」と表示されます（この3つの名前は変えないでください）。</div>';
   }
   h+='<div class="note" style="margin-top:14px">※名前を変えても、すでに登録済みの車両の表示は変わりません。変更は全員の画面に反映されます。</div>'+
@@ -942,52 +981,51 @@ function drawSettings(){
   s.innerHTML=settingsHTML();s.scrollTop=top;
 }
 function msAct(a,b){
-  var l=b.dataset.l,i=+b.dataset.i,m=b.dataset.m;
-  if(a==='msTab'){msTabV=b.dataset.v;msOpenI=-1;drawSettings();$('#sheet').scrollTop=0}
-  else if(a==='msOpen'){msOpenI=(msOpenI===i?-1:i);drawSettings()}
-  else if(a==='msUp'||a==='msDown'){
-    var arr=msArr(l,m),j=a==='msUp'?i-1:i+1;
-    if(j<0||j>=arr.length)return;
-    var t=arr[i];arr[i]=arr[j];arr[j]=t;
-    if(l==='models'&&msOpenI===i)msOpenI=j;else if(l==='models'&&msOpenI===j)msOpenI=i;
-    drawSettings();
-  }
+  var l=b.dataset.l,i=+b.dataset.i,s=b.dataset.s,m=b.dataset.m;
+  if(a==='msTab'){msTabV=b.dataset.v;msOS=-1;msOM=-1;drawSettings();$('#sheet').scrollTop=0}
+  else if(a==='msOpenS'){msOS=(msOS===i?-1:i);msOM=-1;drawSettings()}
+  else if(a==='msOpenM'){msOM=(msOM===i?-1:i);drawSettings()}
   else if(a==='msDel'){
-    msArr(l,m).splice(i,1);
-    if(l==='models'){if(msOpenI===i)msOpenI=-1;else if(msOpenI>i)msOpenI--}
+    msArr(l,s,m).splice(i,1);
+    if(l==='series'){msOS=-1;msOM=-1}else if(l==='models')msOM=-1;
     drawSettings();
   }
   else if(a==='msAdd'){
-    var ar=msArr(l,m);
-    ar.push(l==='models'?{name:'',grades:[]}:l==='colors'?{name:'',hex:'#888888'}:'');
-    if(l==='models')msOpenI=-1;
+    var ar=msArr(l,s,m);
+    ar.push(l==='series'?{name:'',models:[]}:l==='models'?{name:'',grades:[]}:l==='colors'?{name:'',hex:'#888888'}:'');
+    if(l==='series'){msOS=ar.length-1;msOM=-1}
+    if(l==='models'){msOM=ar.length-1}
     drawSettings();
-    var ins=$('#sheet').querySelectorAll('input[data-ml="'+l+'"]'+(m!=null&&m!==undefined?'[data-m="'+m+'"]':':not([data-m])')+'[data-i="'+(ar.length-1)+'"]:not([type=color])');
-    if(ins.length)ins[ins.length-1].focus({preventScroll:false});
+    var q='input[data-ml="'+l+'"][data-i="'+(ar.length-1)+'"]:not([type=color])'+(s!=null?'[data-s="'+s+'"]':':not([data-s])')+(m!=null?'[data-m="'+m+'"]':':not([data-m])');
+    var ins=$('#sheet').querySelector(q);
+    if(ins)ins.focus();
   }
-  else if(a==='msReset'){ms=clone(DEFAULT_MASTER);msOpenI=-1;drawSettings();toast('初期の選択肢を表示しました。「保存」で確定します')}
+  else if(a==='msReset'){ms=clone(DEFAULT_MASTER);msOS=-1;msOM=-1;drawSettings();toast('初期の選択肢を表示しました。「保存」で確定します')}
   else if(a==='msCancel')closeSheet();
   else if(a==='msSave')msSave();
 }
 function uniq(a){var s={};return a.filter(function(x){if(!x||s[x])return false;s[x]=1;return true})}
 async function msSave(){
-  var out={
-    models:[],grades:uniq(ms.grades.map(function(g){return String(g).trim()})),
-    colors:[],equip:uniq(ms.equip.map(function(g){return String(g).trim()}))
-  };
-  var seen={};
-  ms.models.forEach(function(m){
-    var n=String(m.name).trim();if(!n)return;
-    var gs=(m.grades||[]).map(function(g){return String(g).trim()});
-    if(seen[n]){seen[n].grades=uniq(seen[n].grades.concat(gs));return}
-    seen[n]={name:n,grades:uniq(gs)};out.models.push(seen[n]);
+  var trim=function(g){return String(g).trim()};
+  var out={series:[],models:[],grades:uniq(ms.grades.map(trim)),colors:[],equip:uniq(ms.equip.map(trim))};
+  var sm={};
+  ms.series.forEach(function(se){
+    var sn=trim(se.name);if(!sn)return;
+    var S=sm[sn];if(!S){S=sm[sn]={name:sn,models:[],_i:{}};out.series.push(S)}
+    se.models.forEach(function(mo){
+      var n=trim(mo.name);if(!n)return;
+      var gs=(mo.grades||[]).map(trim);
+      if(S._i[n]){S._i[n].grades=uniq(S._i[n].grades.concat(gs));return}
+      S._i[n]={name:n,grades:uniq(gs)};S.models.push(S._i[n]);
+    });
   });
+  out.series.forEach(function(S){delete S._i;S.models.forEach(function(x){out.models.push({name:x.name,grades:x.grades})})});
   var cs={};
   ms.colors.forEach(function(c){
-    var n=shortColor(String(c.name).trim());if(!n||cs[n])return;cs[n]=1;
+    var n=shortColor(trim(c.name));if(!n||cs[n])return;cs[n]=1;
     out.colors.push({name:n,hex:/^#[0-9a-fA-F]{6}$/.test(c.hex)?c.hex:'#888888'});
   });
-  if(!out.models.length){toast('車種が1つもありません');return}
+  if(!out.series.length){toast('車種が1つもありません');return}
   var btn=document.querySelector('[data-act="msSave"]');if(btn)btn.disabled=true;
   try{
     await db.collection('config').doc('master').set(out);
@@ -997,6 +1035,54 @@ async function msSave(){
     toast(err&&err.code==='permission-denied'?'保存できません：Firestoreのルールに config の許可を追加してください':'保存に失敗しました。通信を確認してください');
   }
 }
+
+/* ---- drag handle reorder in settings (no DOM moves while dragging) ---- */
+$('#sheet').addEventListener('pointerdown',function(e){
+  var g=e.target.closest&&e.target.closest('.grip');if(!g||!ms||!sheetState||sheetState.mode!=='settings')return;
+  var item=g.closest('.mit'),list=item&&item.parentElement;if(!list||!list.classList.contains('mlist'))return;
+  e.preventDefault();
+  var sh=$('#sheet'),items=[].slice.call(list.children).filter(function(x){return x.classList.contains('mit')});
+  var from=items.indexOf(item),rs=items.map(function(x){return x.getBoundingClientRect()});
+  var tops=rs.map(function(r){return r.top}),hs=rs.map(function(r){return r.height});
+  var gap=items.length>1?Math.max(0,tops[1]-(tops[0]+hs[0])):0;
+  var y0=e.clientY,lastY=e.clientY,sc0=sh.scrollTop,to=from,timer=null;
+  try{g.setPointerCapture(e.pointerId)}catch(x){}
+  item.classList.add('lift');
+  items.forEach(function(x){if(x!==item)x.style.transition='transform .12s'});
+  var step=function(){
+    var tr=lastY-y0+(sh.scrollTop-sc0);
+    item.style.transform='translateY('+tr+'px)';
+    var c=tops[from]+hs[from]/2+tr,pos=0;
+    items.forEach(function(x,j){if(j!==from&&tops[j]+hs[j]/2<c)pos++});
+    to=pos;
+    var sz=hs[from]+gap;
+    items.forEach(function(x,j){
+      if(j===from)return;
+      var s=0;
+      if(from<to&&j>from&&j<=to)s=-sz;
+      else if(from>to&&j<from&&j>=to)s=sz;
+      x.style.transform=s?'translateY('+s+'px)':'';
+    });
+  };
+  var tick=function(){
+    var sr=sh.getBoundingClientRect(),d=0;
+    if(lastY<sr.top+70)d=-9;else if(lastY>sr.bottom-70)d=9;
+    if(d){var b4=sh.scrollTop;sh.scrollTop+=d;if(sh.scrollTop!==b4)step()}
+  };
+  var mv=function(ev){lastY=ev.clientY;step()};
+  var up=function(){
+    g.removeEventListener('pointermove',mv);g.removeEventListener('pointerup',up);g.removeEventListener('pointercancel',up);
+    clearInterval(timer);
+    if(to!==from){
+      var arr=msArr(list.dataset.l,list.dataset.s,list.dataset.m);
+      var it=arr.splice(from,1)[0];arr.splice(to,0,it);
+      msOS=-1;msOM=-1;
+    }
+    drawSettings();
+  };
+  g.addEventListener('pointermove',mv);g.addEventListener('pointerup',up);g.addEventListener('pointercancel',up);
+  timer=setInterval(tick,16);
+});
 
 /* ---------- events: sheet ---------- */
 var sheet=$('#sheet');
@@ -1027,7 +1113,13 @@ sheet.addEventListener('click',function(e){
 sheet.addEventListener('change',function(e){
   var t=e.target,k=t.dataset.sel;if(!k)return;
   var v=t.value;
-  if(k==='model'){
+  if(k==='series'){
+    if(v==='__other__'){form.so=true;form.se='';form.model='';form.mo=false}
+    else{form.so=false;form.se=v;form.mo=false;if(modelsOf(v).indexOf(form.model)<0)form.model=''}
+    if(!form.go&&form.grade&&gradeList(form.model).indexOf(form.grade)<0)form.grade='';
+    renderPickers();
+    if(form.so){var is=$('#f-model');if(is)is.focus()}
+  }else if(k==='model'){
     if(v==='__other__'){form.mo=true;form.model=''}else{form.mo=false;form.model=v}
     if(!form.go&&form.grade&&gradeList(form.model).indexOf(form.grade)<0)form.grade='';
     renderPickers();
@@ -1041,8 +1133,8 @@ sheet.addEventListener('change',function(e){
 sheet.addEventListener('input',function(e){
   var t=e.target;
   if(t.dataset.ml){
-    var arr=msArr(t.dataset.ml,t.dataset.m),ix=+t.dataset.i;
-    if(t.dataset.ml==='models'||t.dataset.ml==='colors')arr[ix][t.dataset.k||'name']=t.value;else arr[ix]=t.value;
+    var arr=msArr(t.dataset.ml,t.dataset.s,t.dataset.m),ix=+t.dataset.i;
+    if(t.dataset.ml==='series'||t.dataset.ml==='models'||t.dataset.ml==='colors')arr[ix][t.dataset.k||'name']=t.value;else arr[ix]=t.value;
     return;
   }
   if(t.dataset.n==='staff'){neg.staff=t.value;var sc=$('#staffChips');if(sc){sc.querySelectorAll('.chip').forEach(function(c){c.classList.toggle('on',c.dataset.v===neg.staff)})}updateNegUI()}
