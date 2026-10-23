@@ -95,11 +95,30 @@ h1{margin:0;font-size:22px;font-weight:900;letter-spacing:.02em}
 .kf .chip{min-height:34px;padding:2px 12px;font-size:13px}
 
 /* inputs & buttons */
-input[type=text],input[type=search],input[type=number],input:not([type]){
+select,input[type=text],input[type=search],input[type=number],input:not([type]){
   min-height:44px;width:100%;padding:8px 12px;font-size:16px;
   background:var(--surface-2);border:1px solid var(--line);border-radius:10px;
 }
 input::placeholder{color:var(--ink-3)}
+select{font:inherit;color:inherit;appearance:auto}
+.cm{display:flex;flex-direction:column;min-width:0;line-height:1.3;gap:0}
+.cm .colorname{max-width:100%}
+.km{font-size:11.5px;color:var(--ink-2);white-space:nowrap;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.row3{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin-top:12px}
+.row3 .fl{margin-top:0}
+.gear{min-height:30px;padding:2px 12px;border-radius:99px;border:1px solid var(--line);background:var(--surface);font-size:12px;color:var(--ink-2);white-space:nowrap}
+.tr-r{display:flex;align-items:center;gap:8px}
+.kf{flex-wrap:wrap;align-items:center}
+.sortsel{margin-left:auto;min-height:34px!important;width:auto!important;max-width:170px;padding:2px 8px!important;font-size:13px!important;border-radius:99px!important}
+.mrow{display:flex;gap:6px;align-items:center;margin:6px 0}
+.mrow input[type=text],.mrow input:not([type]){flex:1;min-width:0;min-height:40px}
+.mrow input[type=color],.addrow input[type=color]{flex:none;width:42px;height:40px;padding:0;border:1px solid var(--line);border-radius:8px;background:none}
+.ib{flex:none;min-width:36px;height:36px;border-radius:8px;border:1px solid var(--line);background:var(--surface-2);font-size:15px;padding:0 6px}
+.ib.d{color:var(--over)}
+.ib:disabled{opacity:.3}
+.ib.g{min-width:70px;font-size:12px}
+.subp{margin:4px 0 12px 10px;padding:6px 10px 10px;border-left:3px solid var(--line-strong);background:var(--surface-2);border-radius:8px}
+.msh{margin:18px 0 4px;font-size:14px;font-weight:900}
 input.small{min-height:38px;font-size:15px}
 .btn{min-height:44px;padding:8px 16px;border-radius:10px;border:1px solid var(--line);background:var(--surface);font-weight:700}
 .btn.sm{min-height:36px;padding:4px 12px;font-size:13px}
@@ -257,7 +276,7 @@ body.busy .sheet .btn{opacity:.6;pointer-events:none}
 <body>
 <div class="wrap">
   <header class="head">
-    <div class="titlerow"><h1>CPO管理</h1><span class="sync" id="sync"><i></i><span>接続中</span></span></div>
+    <div class="titlerow"><h1>CPO管理</h1><span class="tr-r"><button class="gear" id="gear" type="button">⚙ 選択肢の設定</button><span class="sync" id="sync"><i></i><span>接続中</span></span></span></div>
     <div class="stats" id="stats"></div>
     <div class="kf" id="kf"></div>
     <div class="search"><input id="q" type="search" placeholder="車種・車両No.・担当者・CPOで探す" autocomplete="off" aria-label="検索"></div>
@@ -274,7 +293,7 @@ body.busy .sheet .btn{opacity:.6;pointer-events:none}
 (function(){
 'use strict';
 var LS_STAFF='chuko-shodan-staff-v1';
-var state={cars:[],ver:'',ready:false,shared:true,readOnly:false,q:'',kf:'',showSold:false};
+var state={cars:[],ver:'',ready:false,shared:true,readOnly:false,q:'',kf:'',showSold:false,sort:'manual',master:null};
 var press=null, pendingRender=false, sheetState=null, neg={staff:'',days:3}, form=null, flashId=null, toastTimer=null, lastDay='';
 
 var $=function(s){return document.querySelector(s)};
@@ -298,15 +317,22 @@ function remain(until){
 }
 
 /* ---------- colors ---------- */
-var COLOR_PRESETS=[['ソニッククォーツ','#e8e5de'],['ホワイトノーヴァGF','#f2f1ed'],['ブラックマイカ','#1b1d20'],['グラファイトブラックGF','#25282c'],['ソニッククロム','#8f949a'],['ソニックチタニウム','#cdb98a'],['ソニックイリジウム','#d8dce0'],['シルバーメタリック','#c3c8ce'],['アストログレーメタリック','#6b7078'],['ソニックカッパー','#8c5a3d'],['ディープアズールMM','#1e3f73'],['レッドスピネル','#8e1c26'],['パッショネイトイエロー','#e9c21c']];
+var DEFAULT_MASTER={
+  models:[].concat(['UX200','UX250h','UX300e','NX200','NX250','NX300','NX300h','NX350','NX350h','NX450h+','RX200t','RX300','RX350','RX350h','RX450h','RX450h+','RX500h','LBX','LM500h','LX570','LX600','GX460','GX550','IS200t','IS250','IS300','IS300h','IS350','IS500','ES300h','RC200t','RC300','RC300h','RC350','RC F','LC500','LC500h','LS460','LS500','LS500h','LS600h','CT200h','RZ450e','RZ300e']).map(function(n){return {name:n,grades:[]}}),
+  grades:['ベース','version L','F SPORT','F SPORT Performance','I package'],
+  colors:[['ソニッククォーツ','#e8e5de'],['ホワイトノーヴァGF','#f2f1ed'],['ブラックマイカ','#1b1d20'],['グラファイトブラックGF','#25282c'],['ソニッククロム','#8f949a'],['ソニックチタニウム','#cdb98a'],['ソニックイリジウム','#d8dce0'],['シルバーメタリック','#c3c8ce'],['アストログレーメタリック','#6b7078'],['ソニックカッパー','#8c5a3d'],['ディープアズールMM','#1e3f73'],['レッドスピネル','#8e1c26'],['パッショネイトイエロー','#e9c21c']].map(function(p){return {name:p[0],hex:p[1]}}),
+  equip:['ムーンルーフ','フロントスポイラー','サイドスポイラー','リヤスポイラー']
+};
+var COLOR_PRESETS=DEFAULT_MASTER.colors.map(function(c){return [c.name,c.hex]});
 function shortColor(n){return String(n||'').replace(/ガラスフレーク/g,'GF').replace(/マイカメタリック/g,'MM')}
 var COLOR_KEYS=[[/クォーツ/,'#e8e5de'],[/クロム/,'#8f949a'],[/チタニウム/,'#cdb98a'],[/イリジウム/,'#d8dce0'],[/アストログレー/,'#6b7078'],[/カッパー/,'#8c5a3d'],[/アズール|ディープブルー/,'#1e3f73'],[/スピネル/,'#8e1c26'],[/グラファイト/,'#25282c'],[/ブラック|黒/,'#1b1d20'],[/シルバー|銀/,'#c3c8ce'],[/グレー|グレイ|灰|ガンメタ/,'#858b93'],[/レッド|赤|ワイン|ボルドー/,'#d2322d'],[/ブルー|青|紺|ネイビー/,'#2e63c8'],[/グリーン|緑|カーキ/,'#2e8a57'],[/ブラウン|茶/,'#7b5638'],[/ベージュ|ゴールド|シャンパン/,'#d6c19b'],[/イエロー|黄/,'#ebc41f'],[/オレンジ|橙/,'#ef8a2c'],[/パープル|紫/,'#7a55b3'],[/パール/,'#ebe6dc'],[/ホワイト|白/,'#f4f4f1']];
 function colorHex(name){
+  for(var k=0;k<COLOR_PRESETS.length;k++){if(shortColor(COLOR_PRESETS[k][0])===shortColor(name))return COLOR_PRESETS[k][1]}
   name=String(name||'').split(/[＆&・／]/)[0];
   for(var i=0;i<COLOR_KEYS.length;i++){if(COLOR_KEYS[i][0].test(name))return COLOR_KEYS[i][1]}
   return '#b9bec5';
 }
-var EQUIP_PRESETS=['ムーンルーフ','フロントスポイラー','サイドスポイラー','リヤスポイラー'];
+var EQUIP_PRESETS=DEFAULT_MASTER.equip.slice();
 var SPOIL=['フロントスポイラー','サイドスポイラー','リヤスポイラー'];
 function equipDisplay(list){
   list=list||[];
@@ -318,7 +344,7 @@ function equipDisplay(list){
 
 /* ---------- Firebase（Firestore）: 車両1台 = 1ドキュメント。ドキュメントID = 車両No. ---------- */
 var inflight=0, db=null, col=null, unsub=null;
-function norm(id,d){return Object.assign({queue:[],equip:[],deal:null,status:'stock',order:0,kind:''},d,{id:id})}
+function norm(id,d){return Object.assign({queue:[],equip:[],deal:null,status:'stock',order:0,kind:'',km:null},d,{id:id})}
 var fbFail=function(msg){return {ok:false,msg:msg}};
 var fbOk=function(x){var o={ok:true};for(var k in (x||{}))o[k]=x[k];return o};
 var cleanStaff=function(s){return String(s||'').trim().slice(0,20)};
@@ -335,7 +361,8 @@ function cleanFields(f){
   return {
     plate:String(f.plate||'').trim(),model:String(f.model||'').trim().slice(0,40),year:String(f.year||'').trim().slice(0,10),
     grade:String(f.grade||'').trim().slice(0,30),price:price,color:String(f.color||'').trim().slice(0,40),
-    equip:(f.equip||[]).map(function(x){return String(x).trim().slice(0,30)}).filter(Boolean).slice(0,40),kind:cleanKind(f.kind)
+    equip:(f.equip||[]).map(function(x){return String(x).trim().slice(0,30)}).filter(Boolean).slice(0,40),kind:cleanKind(f.kind),
+    km:(f.km===''||f.km==null||isNaN(Number(f.km))||Number(f.km)<0)?null:Math.min(9999999,Math.round(Number(f.km)))
   };
 }
 function strip(c){var o=clone(c);delete o.id;delete o.sample;return o}
@@ -473,12 +500,22 @@ async function act(action,p){
     if(!inflight)document.body.classList.remove('busy');
   }
 }
+function applyMaster(data){
+  var m=clone(DEFAULT_MASTER);
+  if(data){['models','grades','colors','equip'].forEach(function(k){if(Array.isArray(data[k]))m[k]=data[k]})}
+  m.models=m.models.map(function(x){return {name:String(x.name||''),grades:Array.isArray(x.grades)?x.grades:[]}});
+  state.master=m;
+  COLOR_PRESETS=m.colors.map(function(c){return [c.name,c.hex]});
+  EQUIP_PRESETS=m.equip.slice();
+}
+applyMaster(null);
 function connect(){
   if(typeof firebase==='undefined'||typeof FIREBASE_CONFIG==='undefined'||!FIREBASE_CONFIG||!FIREBASE_CONFIG.apiKey||/ここに/.test(FIREBASE_CONFIG.apiKey)){
     state.ready=false;$('#app').innerHTML='<div class="emptybox"><h2>Firebaseの設定が未入力です</h2><p>firebase-config.js に、Firebaseコンソールの設定値を貼り付けてください。</p></div>';return;
   }
   firebase.initializeApp(FIREBASE_CONFIG);
   db=firebase.firestore();col=db.collection('cars');
+  db.collection('config').doc('master').onSnapshot(function(s){applyMaster(s.exists?s.data():null);render()},function(){});
   unsub=col.onSnapshot(function(snap){
     state.cars=snap.docs.map(function(d){return norm(d.id,d.data())});
     var live=!snap.metadata.fromCache;
@@ -511,12 +548,34 @@ function sections(){
   var f=q?state.cars.filter(function(c){return hay(c).indexOf(q)>=0}):state.cars.slice();
   if(state.kf)f=f.filter(function(c){return c.kind===state.kf});
   return {
-    deal:f.filter(function(c){return c.status!=='sold'&&c.deal}).sort(byOrder),
-    stock:f.filter(function(c){return c.status!=='sold'&&!c.deal}).sort(byOrder),
-    sold:f.filter(function(c){return c.status==='sold'}).sort(byOrder)
+    deal:f.filter(function(c){return c.status!=='sold'&&c.deal}).sort(sorter()),
+    stock:f.filter(function(c){return c.status!=='sold'&&!c.deal}).sort(sorter()),
+    sold:f.filter(function(c){return c.status==='sold'}).sort(sorter())
   };
 }
-var canDrag=function(){return !state.q.trim()&&!state.kf&&!state.readOnly};
+var canDrag=function(){return !state.q.trim()&&!state.kf&&!state.readOnly&&state.sort==='manual'};
+var SORTS=[['manual','並び順：手動'],['price_asc','金額が安い順'],['price_desc','金額が高い順'],['year_desc','年式が新しい順'],['year_asc','年式が古い順'],['km_asc','走行距離が少ない順'],['km_desc','走行距離が多い順'],['model','車種順']];
+function yearVal(y){
+  var s=String(y||'').trim(),m;
+  if(/^\d{4}$/.test(s))return +s;
+  if((m=s.match(/^R\s*(\d{1,2})/i)))return 2018+ +m[1];
+  if((m=s.match(/^H\s*(\d{1,2})/i)))return 1988+ +m[1];
+  if((m=s.match(/^S\s*(\d{1,2})/i)))return 1925+ +m[1];
+  return null;
+}
+function sorter(){
+  var k=state.sort;
+  if(k==='manual')return byOrder;
+  var get={price_asc:function(c){return c.price},price_desc:function(c){return c.price},year_desc:function(c){return yearVal(c.year)},year_asc:function(c){return yearVal(c.year)},km_asc:function(c){return c.km},km_desc:function(c){return c.km}}[k];
+  if(k==='model')return function(a,b){return String(a.model).localeCompare(String(b.model),'ja')||byOrder(a,b)};
+  var desc=/_desc$/.test(k);
+  return function(a,b){
+    var x=get(a),y=get(b),nx=(x==null||x===''),ny=(y==null||y==='');
+    if(nx&&ny)return byOrder(a,b);
+    if(nx)return 1;if(ny)return -1;
+    return (desc?y-x:x-y)||byOrder(a,b);
+  };
+}
 
 /* ---------- html builders ---------- */
 function yearText(y){y=String(y||'').trim();return /^\d{4}$/.test(y)?y+'年':y}
@@ -527,6 +586,12 @@ function priceHTML(c){
   var p=c.price;
   if(p===null||p===undefined||p===''||isNaN(Number(p)))return '<b class="na">—</b>';
   return '<b>'+Number(p).toFixed(1)+'</b><small>万円</small>';
+}
+function kmText(c){return (c.km==null||c.km===''||isNaN(Number(c.km)))?'':Number(c.km).toLocaleString('ja-JP')+'km'}
+function cmHTML(c){
+  var col=colorHTML(c),km=kmText(c);
+  if(!col&&!km)return '';
+  return '<span class="cm">'+col+(km?'<span class="km">'+km+'</span>':'')+'</span>';
 }
 function colorHTML(c){
   if(!c.color)return '';
@@ -544,7 +609,7 @@ function cardHTML(c){
   var eq='<div class="eqline">'+equipDisplay(c.equip).map(function(e){return '<span class="eq">'+esc(e)+'</span>'}).join('')+'</div>';
   var sub=subLine(c);
   return '<div class="card'+(d&&!sold?' deal':'')+(sold?' sold':'')+'" data-id="'+esc(c.id)+'" role="button" tabindex="0" aria-label="'+esc(c.model)+'">'+bar+
-    '<div class="main"><div class="info"><div class="l2">'+kindHTML(c)+(c.plate?'<span class="plate">No.'+esc(c.plate)+'</span>':'')+colorHTML(c)+(c.sample?'<span class="tag-sample">サンプル</span>':'')+'</div>'+'<div class="l1">'+(yearText(c.year)?'<span class="sub">'+esc(yearText(c.year))+'</span>':'')+'<span class="model">'+esc(c.model)+'</span>'+(c.grade?'<span class="sub">'+esc(c.grade)+'</span>':'')+'</div>'+
+    '<div class="main"><div class="info"><div class="l2">'+kindHTML(c)+(c.plate?'<span class="plate">No.'+esc(c.plate)+'</span>':'')+cmHTML(c)+(c.sample?'<span class="tag-sample">サンプル</span>':'')+'</div>'+'<div class="l1">'+(yearText(c.year)?'<span class="sub">'+esc(yearText(c.year))+'</span>':'')+'<span class="model">'+esc(c.model)+'</span>'+(c.grade?'<span class="sub">'+esc(c.grade)+'</span>':'')+'</div>'+
     eq+'</div>'+
     '<div class="price">'+priceHTML(c)+'</div></div>'+qbar+'</div>';
 }
@@ -569,7 +634,7 @@ function renderHead(){
   var wait=state.cars.reduce(function(s,c){return s+(c.status!=='sold'?(c.queue||[]).length:0)},0);
   $('#stats').innerHTML='<div class="stat"><b>'+stock+'</b><span>在庫 台</span></div><div class="stat deal"><b>'+dealN+'</b><span>商談中 台</span></div><div class="stat wait"><b>'+wait+'</b><span>順番待ち 名</span></div>';
   var kfEl=$('#kf');
-  if(kfEl)kfEl.innerHTML=[['','すべて'],['CPO','CPO'],['UCAR','U-Car']].map(function(p){var n=p[0]?state.cars.filter(function(c){return c.status!=='sold'&&c.kind===p[0]}).length:stock;return '<button type="button" class="chip'+(state.kf===p[0]?' on':'')+'" data-kf="'+p[0]+'">'+p[1]+' '+n+'</button>'}).join('');
+  if(kfEl)kfEl.innerHTML=[['','すべて'],['CPO','CPO'],['UCAR','U-Car']].map(function(p){var n=p[0]?state.cars.filter(function(c){return c.status!=='sold'&&c.kind===p[0]}).length:stock;return '<button type="button" class="chip'+(state.kf===p[0]?' on':'')+'" data-kf="'+p[0]+'">'+p[1]+' '+n+'</button>'}).join('')+'<select id="sortSel" class="sortsel" aria-label="並び順">'+SORTS.map(function(o){return '<option value="'+o[0]+'"'+(state.sort===o[0]?' selected':'')+'>'+o[1]+'</option>'}).join('')+'</select>';
   var s=$('#sync');
   s.className='sync'+(state.readOnly?' ro':(state.shared?' live':''));
   s.querySelector('span').textContent=!state.ready?'接続中':(state.readOnly?'閲覧のみ':(state.shared?'共有中':'再接続中'));
@@ -648,6 +713,7 @@ function viewHTML(c){
   var sub=subLine(c);
   h+='<div class="sh-main"><div><h2>'+(yearText(c.year)?'<span class="sub">'+esc(yearText(c.year))+'</span> ':'')+esc(c.model)+(c.grade?' <span class="sub">'+esc(c.grade)+'</span>':'')+(c.sample?' <span class="tag-sample">サンプル</span>':'')+'</h2></div><div class="price big">'+priceHTML(c)+'</div></div>';
   if(c.color)h+='<div class="sh-meta">ボディカラー　'+colorHTML(c)+'</div>';
+  if(kmText(c))h+='<div class="sh-meta">走行距離　<b>'+kmText(c)+'</b></div>';
   if((c.equip||[]).length)h+='<div class="eqwrap">'+equipDisplay(c.equip).map(function(e){return '<span class="eq">'+esc(e)+'</span>'}).join('')+'</div>';
   h+='<hr>';
   if(sold){
@@ -681,22 +747,38 @@ function updateNegUI(){
 /* ---- edit form ---- */
 function openForm(id){
   var c=id?findCar(id):null;
-  form=c?{plate:c.plate||'',model:c.model||'',year:c.year||'',grade:c.grade||'',price:(c.price==null?'':String(c.price)),color:shortColor(c.color),equip:(c.equip||[]).slice(),kind:c.kind||''}:{plate:'',model:'',year:'',grade:'',price:'',color:'',equip:[],kind:''};
+  form=c?{plate:c.plate||'',model:c.model||'',year:c.year||'',grade:c.grade||'',price:(c.price==null?'':String(c.price)),color:shortColor(c.color),equip:(c.equip||[]).slice(),kind:c.kind||'',km:(c.km==null?'':String(c.km))}:{plate:'',model:'',year:'',grade:'',price:'',color:'',equip:[],kind:'',km:''};
+  form.mo=!!(form.model&&modelList().indexOf(form.model)<0);
+  form.go=!!(form.grade&&gradeList(form.model).indexOf(form.grade)<0);
   sheetState={mode:'form',id:id||null};
   $('#sheet').innerHTML=formHTML();
-  renderSwatches();renderTags();
+  renderPickers();renderSwatches();renderTags();
   showSheet();
-  if(!id)setTimeout(function(){var m=$('#f-model');if(m)m.focus({preventScroll:true})},60);
+}
+function modelList(){return (state.master.models||[]).map(function(m){return m.name})}
+function gradeList(model){
+  var m=(state.master.models||[]).filter(function(x){return x.name===model})[0];
+  return (m&&m.grades&&m.grades.length)?m.grades:(state.master.grades||[]);
+}
+function pickHTML(kind,list,val,isOther,ph,inputId,other){
+  return '<select id="f-'+kind+'sel" data-sel="'+kind+'"><option value="">'+ph+'</option>'+list.map(function(o){return '<option'+(!isOther&&o===val?' selected':'')+'>'+esc(o)+'</option>'}).join('')+'<option value="__other__"'+(isOther?' selected':'')+'>その他（手入力）</option></select>'+
+    '<input id="'+inputId+'" data-f="'+kind+'" type="text" placeholder="'+other+'" autocomplete="off" style="margin-top:6px'+(isOther?'':';display:none')+'" value="'+esc(isOther?val:'')+'">';
+}
+function renderPickers(){
+  var m=$('#mwrap'),g=$('#gwrap');
+  if(m)m.innerHTML=pickHTML('model',modelList(),form.model,form.mo,'車種を選択してください','f-model','車種を入力');
+  if(g)g.innerHTML=pickHTML('grade',gradeList(form.model),form.grade,form.go,'選択してください','f-grade','グレードを入力');
 }
 function formHTML(){
   var f=form;
   return '<div class="sh-top"><h2 class="fh">'+(sheetState.id?'車両を編集':'車両を追加')+'</h2><span class="sp"></span><button class="btn btn-ghost sm" type="button" data-act="cancelForm">キャンセル</button></div>'+
   '<label class="fl" style="margin-top:0">区分</label><div class="chips" id="kindPick">'+[['CPO','CPO'],['UCAR','U-Car']].map(function(p){return '<button type="button" class="chip'+(f.kind===p[0]?' on':'')+'" data-act="pickKind" data-v="'+p[0]+'">'+p[1]+'</button>'}).join('')+'</div>'+
   '<label class="fl" for="f-plate">車両No.（社内管理番号・7桁）</label><input id="f-plate" data-f="plate" type="text" inputmode="numeric" maxlength="7" placeholder="1234567" autocomplete="off" value="'+esc(f.plate)+'">'+
-  '<label class="fl" for="f-model">車種</label><input id="f-model" data-f="model" type="text" placeholder="例：ハリアー" autocomplete="off" value="'+esc(f.model)+'">'+
+  '<label class="fl" for="f-modelsel">車種</label><div id="mwrap"></div>'+
   '<div class="row2"><div><label class="fl sm" for="f-year">年式</label><input id="f-year" data-f="year" class="small" type="text" placeholder="2021 / R3" autocomplete="off" value="'+esc(f.year)+'"></div>'+
-  '<div><label class="fl sm" for="f-grade">グレード</label><input id="f-grade" data-f="grade" class="small" type="text" placeholder="Z" autocomplete="off" value="'+esc(f.grade)+'"></div></div>'+
-  '<label class="fl" for="f-price">金額（万円）</label><input id="f-price" data-f="price" type="number" inputmode="decimal" step="0.1" min="0" placeholder="198.0" value="'+esc(f.price)+'">'+
+  '<div><label class="fl sm" for="f-gradesel">グレード</label><div id="gwrap"></div></div></div>'+
+  '<div class="row3"><div><label class="fl" for="f-price">金額（万円）</label><input id="f-price" data-f="price" type="number" inputmode="decimal" step="0.1" min="0" placeholder="198.0" value="'+esc(f.price)+'"></div>'+
+  '<div><label class="fl" for="f-km">走行距離（km）</label><input id="f-km" data-f="km" type="text" inputmode="numeric" placeholder="12000" autocomplete="off" value="'+esc(f.km)+'"></div></div>'+
   '<label class="fl" for="f-color">ボディカラー</label><div class="swatches" id="swatches"></div><input id="f-color" data-f="color" type="text" placeholder="一覧にない色はここに入力（GF・MMの略称OK）" autocomplete="off" style="margin-top:8px" value="'+esc(f.color)+'">'+
   '<label class="fl" for="f-eq">装備品</label><div class="chips" id="eqSuggest"></div><div class="tags" id="tags" style="margin-top:8px"></div>'+
   '<div class="addrow"><input id="f-eq" type="text" placeholder="その他の装備を入力して追加" autocomplete="off"><button class="btn" type="button" data-act="addTag">追加</button></div>'+
@@ -717,10 +799,10 @@ async function saveForm(){
   if(acting)return;
   var t=$('#f-eq');if(t&&t.value.trim()){addTags(t.value);t.value=''}
   var f=form;
-  if(!f.model.trim()){toast('車種を入力してください');var m=$('#f-model');if(m)m.focus();return}
+  if(!f.model.trim()){toast('車種を選ぶか、入力してください');return}
   if(!/^\d{7}$/.test(f.plate)){toast('車両No.は7桁の数字で入力してください');var pl=$('#f-plate');if(pl)pl.focus();return}
   var price=f.price===''?null:parseFloat(f.price);
-  var fields={plate:f.plate.trim(),model:f.model.trim(),year:f.year.trim(),grade:f.grade.trim(),price:(price==null||isNaN(price))?null:price,color:shortColor(f.color.trim()),equip:f.equip.slice(),kind:f.kind||''};
+  var fields={plate:f.plate.trim(),model:f.model.trim(),year:f.year.trim(),grade:f.grade.trim(),price:(price==null||isNaN(price))?null:price,color:shortColor(f.color.trim()),equip:f.equip.slice(),kind:f.kind||'',km:(String(f.km).trim()===''?null:parseInt(f.km,10))};
   var editId=sheetState.id;
   acting=true;
   var btn=document.querySelector('[data-act="saveForm"]');
@@ -799,6 +881,123 @@ function deleteCurrent(){
   run('delete',{id:c.id},function(r){closeSheet();toast('「'+r.prev.model+'」を削除しました',function(){undo(r.prev)})});
 }
 
+/* ---------- settings (master data) ---------- */
+var ms=null,msTabV='model',msOpenI=-1;
+function openSettings(){
+  ms=clone(state.master);msTabV='model';msOpenI=-1;
+  sheetState={mode:'settings',id:null};
+  drawSettings();showSheet();
+}
+function msArr(l,m){
+  if(l==='models')return ms.models;
+  if(l==='grades')return (m===undefined||m===''||m==null)?ms.grades:ms.models[+m].grades;
+  return ms[l];
+}
+function msRow(l,i,val,m,extra){
+  var n=msArr(l,m).length,ma=(m===undefined||m==null)?'':' data-m="'+m+'"';
+  return '<div class="mrow">'+extra+
+    '<button type="button" class="ib" data-act="msUp" data-l="'+l+'" data-i="'+i+'"'+ma+(i===0?' disabled':'')+' aria-label="上へ">▲</button>'+
+    '<button type="button" class="ib" data-act="msDown" data-l="'+l+'" data-i="'+i+'"'+ma+(i===n-1?' disabled':'')+' aria-label="下へ">▼</button>'+
+    '<button type="button" class="ib d" data-act="msDel" data-l="'+l+'" data-i="'+i+'"'+ma+' aria-label="削除">🗑</button></div>';
+}
+function textIn(l,i,val,m,k,ph){
+  return '<input type="text" data-ml="'+l+'" data-i="'+i+'"'+((m===undefined||m==null)?'':' data-m="'+m+'"')+(k?' data-k="'+k+'"':'')+' value="'+esc(val)+'" placeholder="'+ph+'" autocomplete="off">';
+}
+function settingsHTML(){
+  var h='<div class="sh-top"><h2 class="fh">選択肢の設定</h2><span class="sp"></span><button class="btn btn-ghost sm" type="button" data-act="msCancel">キャンセル</button></div>'+
+    '<div class="chips">'+[['model','車種・グレード'],['color','ボディカラー'],['equip','装備品']].map(function(t){return '<button type="button" class="chip'+(msTabV===t[0]?' on':'')+'" data-act="msTab" data-v="'+t[0]+'">'+t[1]+'</button>'}).join('')+'</div>';
+  if(msTabV==='model'){
+    h+='<div class="msh">車種（「グレード」を押すとその車種専用のグレードを設定）</div>';
+    ms.models.forEach(function(m,i){
+      h+=msRow('models',i,m.name,null,textIn('models',i,m.name,null,'name','車種名')+'<button type="button" class="ib g" data-act="msOpen" data-i="'+i+'">グレード'+(m.grades.length?'('+m.grades.length+')':'')+'</button>');
+      if(msOpenI===i){
+        h+='<div class="subp"><div class="note">'+esc(m.name||'この車種')+'のグレード（空なら共通グレードを使用）</div>';
+        m.grades.forEach(function(g,j){h+=msRow('grades',j,g,i,textIn('grades',j,g,i,'','グレード名'))});
+        h+='<button type="button" class="btn sm" data-act="msAdd" data-l="grades" data-m="'+i+'">＋ グレードを追加</button></div>';
+      }
+    });
+    h+='<button type="button" class="btn sm" data-act="msAdd" data-l="models">＋ 車種を追加</button>';
+    h+='<div class="msh">共通グレード（車種専用が未設定のとき・その他の車種用）</div>';
+    ms.grades.forEach(function(g,j){h+=msRow('grades',j,g,null,textIn('grades',j,g,null,'','グレード名'))});
+    h+='<button type="button" class="btn sm" data-act="msAdd" data-l="grades">＋ 共通グレードを追加</button>';
+  }else if(msTabV==='color'){
+    h+='<div class="msh">ボディカラー（左の四角で色を選べます）</div>';
+    ms.colors.forEach(function(c,i){
+      h+=msRow('colors',i,c.name,null,'<input type="color" data-ml="colors" data-i="'+i+'" data-k="hex" value="'+esc(/^#[0-9a-fA-F]{6}$/.test(c.hex)?c.hex:'#888888')+'">'+textIn('colors',i,c.name,null,'name','例：ホワイトノーヴァ(GF)'));
+    });
+    h+='<button type="button" class="btn sm" data-act="msAdd" data-l="colors">＋ 色を追加</button>';
+  }else{
+    h+='<div class="msh">装備品（車両追加画面にボタンで出ます）</div>';
+    ms.equip.forEach(function(e,i){h+=msRow('equip',i,e,null,textIn('equip',i,e,null,'','装備名'))});
+    h+='<button type="button" class="btn sm" data-act="msAdd" data-l="equip">＋ 装備を追加</button>';
+    h+='<div class="note" style="margin-top:8px">フロント・サイド・リヤの3つのスポイラーがそろうと「フルスポイラー」と表示されます（この3つの名前は変えないでください）。</div>';
+  }
+  h+='<div class="note" style="margin-top:14px">※名前を変えても、すでに登録済みの車両の表示は変わりません。変更は全員の画面に反映されます。</div>'+
+    '<div class="actions"><button class="btn btn-primary block" type="button" data-act="msSave">保存</button>'+
+    '<button class="btn block" type="button" data-act="msReset" style="margin-top:8px">初期の選択肢に戻す（保存するまで反映されません）</button></div>';
+  return h;
+}
+function drawSettings(){
+  var s=$('#sheet'),top=s.scrollTop;
+  s.innerHTML=settingsHTML();s.scrollTop=top;
+}
+function msAct(a,b){
+  var l=b.dataset.l,i=+b.dataset.i,m=b.dataset.m;
+  if(a==='msTab'){msTabV=b.dataset.v;msOpenI=-1;drawSettings();$('#sheet').scrollTop=0}
+  else if(a==='msOpen'){msOpenI=(msOpenI===i?-1:i);drawSettings()}
+  else if(a==='msUp'||a==='msDown'){
+    var arr=msArr(l,m),j=a==='msUp'?i-1:i+1;
+    if(j<0||j>=arr.length)return;
+    var t=arr[i];arr[i]=arr[j];arr[j]=t;
+    if(l==='models'&&msOpenI===i)msOpenI=j;else if(l==='models'&&msOpenI===j)msOpenI=i;
+    drawSettings();
+  }
+  else if(a==='msDel'){
+    msArr(l,m).splice(i,1);
+    if(l==='models'){if(msOpenI===i)msOpenI=-1;else if(msOpenI>i)msOpenI--}
+    drawSettings();
+  }
+  else if(a==='msAdd'){
+    var ar=msArr(l,m);
+    ar.push(l==='models'?{name:'',grades:[]}:l==='colors'?{name:'',hex:'#888888'}:'');
+    if(l==='models')msOpenI=-1;
+    drawSettings();
+    var ins=$('#sheet').querySelectorAll('input[data-ml="'+l+'"]'+(m!=null&&m!==undefined?'[data-m="'+m+'"]':':not([data-m])')+'[data-i="'+(ar.length-1)+'"]:not([type=color])');
+    if(ins.length)ins[ins.length-1].focus({preventScroll:false});
+  }
+  else if(a==='msReset'){ms=clone(DEFAULT_MASTER);msOpenI=-1;drawSettings();toast('初期の選択肢を表示しました。「保存」で確定します')}
+  else if(a==='msCancel')closeSheet();
+  else if(a==='msSave')msSave();
+}
+function uniq(a){var s={};return a.filter(function(x){if(!x||s[x])return false;s[x]=1;return true})}
+async function msSave(){
+  var out={
+    models:[],grades:uniq(ms.grades.map(function(g){return String(g).trim()})),
+    colors:[],equip:uniq(ms.equip.map(function(g){return String(g).trim()}))
+  };
+  var seen={};
+  ms.models.forEach(function(m){
+    var n=String(m.name).trim();if(!n)return;
+    var gs=(m.grades||[]).map(function(g){return String(g).trim()});
+    if(seen[n]){seen[n].grades=uniq(seen[n].grades.concat(gs));return}
+    seen[n]={name:n,grades:uniq(gs)};out.models.push(seen[n]);
+  });
+  var cs={};
+  ms.colors.forEach(function(c){
+    var n=shortColor(String(c.name).trim());if(!n||cs[n])return;cs[n]=1;
+    out.colors.push({name:n,hex:/^#[0-9a-fA-F]{6}$/.test(c.hex)?c.hex:'#888888'});
+  });
+  if(!out.models.length){toast('車種が1つもありません');return}
+  var btn=document.querySelector('[data-act="msSave"]');if(btn)btn.disabled=true;
+  try{
+    await db.collection('config').doc('master').set(out);
+    applyMaster(out);closeSheet();render();toast('選択肢を保存しました');
+  }catch(err){
+    if(btn)btn.disabled=false;
+    toast(err&&err.code==='permission-denied'?'保存できません：Firestoreのルールに config の許可を追加してください':'保存に失敗しました。通信を確認してください');
+  }
+}
+
 /* ---------- events: sheet ---------- */
 var sheet=$('#sheet');
 sheet.addEventListener('click',function(e){
@@ -823,12 +1022,32 @@ sheet.addEventListener('click',function(e){
   else if(a==='rmTag'){var ri=form.equip.indexOf(v);if(ri>=0)form.equip.splice(ri,1);renderTags()}
   else if(a==='pickKind'){form.kind=(form.kind===v?'':v);var kp=$('#kindPick');if(kp)kp.querySelectorAll('.chip').forEach(function(x){x.classList.toggle('on',x.dataset.v===form.kind)})}
   else if(a==='saveForm')saveForm();
+  else if(a.indexOf('ms')===0)msAct(a,b);
+});
+sheet.addEventListener('change',function(e){
+  var t=e.target,k=t.dataset.sel;if(!k)return;
+  var v=t.value;
+  if(k==='model'){
+    if(v==='__other__'){form.mo=true;form.model=''}else{form.mo=false;form.model=v}
+    if(!form.go&&form.grade&&gradeList(form.model).indexOf(form.grade)<0)form.grade='';
+    renderPickers();
+    if(form.mo){var im=$('#f-model');if(im)im.focus()}
+  }else if(k==='grade'){
+    if(v==='__other__'){form.go=true;form.grade=''}else{form.go=false;form.grade=v}
+    renderPickers();
+    if(form.go){var ig=$('#f-grade');if(ig)ig.focus()}
+  }
 });
 sheet.addEventListener('input',function(e){
   var t=e.target;
+  if(t.dataset.ml){
+    var arr=msArr(t.dataset.ml,t.dataset.m),ix=+t.dataset.i;
+    if(t.dataset.ml==='models'||t.dataset.ml==='colors')arr[ix][t.dataset.k||'name']=t.value;else arr[ix]=t.value;
+    return;
+  }
   if(t.dataset.n==='staff'){neg.staff=t.value;var sc=$('#staffChips');if(sc){sc.querySelectorAll('.chip').forEach(function(c){c.classList.toggle('on',c.dataset.v===neg.staff)})}updateNegUI()}
   else if(t.dataset.n==='days'){neg.days=parseInt(t.value,10)||0;updateNegUI()}
-  else if(t.dataset.f){if(t.dataset.f==='plate'){var dg=t.value.replace(/[０-９]/g,function(ch){return String.fromCharCode(ch.charCodeAt(0)-65248)}).replace(/\D/g,'').slice(0,7);if(dg!==t.value)t.value=dg}form[t.dataset.f]=t.value;if(t.dataset.f==='color')renderSwatches()}
+  else if(t.dataset.f){if(t.dataset.f==='plate'){var dg=t.value.replace(/[０-９]/g,function(ch){return String.fromCharCode(ch.charCodeAt(0)-65248)}).replace(/\D/g,'').slice(0,7);if(dg!==t.value)t.value=dg}if(t.dataset.f==='km'){var kd=t.value.replace(/[０-９]/g,function(ch){return String.fromCharCode(ch.charCodeAt(0)-65248)}).replace(/\D/g,'').slice(0,7);if(kd!==t.value)t.value=kd}form[t.dataset.f]=t.value;if(t.dataset.f==='color')renderSwatches()}
 });
 sheet.addEventListener('keydown',function(e){
   if(e.key!=='Enter'||e.isComposing)return;
@@ -840,6 +1059,13 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape'&&sheetState)
 
 /* ---------- events: page ---------- */
 $('#fab').addEventListener('click',function(){if(guard())openForm(null)});
+$('#kf').addEventListener('change',function(e){
+  if(e.target.id!=='sortSel')return;
+  state.sort=e.target.value;
+  try{localStorage.setItem('cpo-sort',state.sort)}catch(x){}
+  render();
+});
+$('#gear').addEventListener('click',function(){openSettings()});
 $('#kf').addEventListener('click',function(e){var b=e.target.closest('[data-kf]');if(!b)return;state.kf=(state.kf===b.dataset.kf?'':b.dataset.kf);render()});
 $('#q').addEventListener('input',function(){state.q=this.value;render()});
 $('#app').addEventListener('click',function(e){
@@ -949,6 +1175,7 @@ function commitOrder(list){
 
 /* ---------- boot ---------- */
 lastDay=ymd(today());
+try{var sv=localStorage.getItem('cpo-sort');if(sv&&SORTS.some(function(o){return o[0]===sv}))state.sort=sv}catch(x){}
 setInterval(function(){var k=ymd(today());if(k!==lastDay){lastDay=k;render()}},60000);
 document.addEventListener('visibilitychange',function(){if(!document.hidden){lastDay=ymd(today());render()}});
 render();
