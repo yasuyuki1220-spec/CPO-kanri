@@ -260,6 +260,17 @@ hr{border:0;border-top:1px solid var(--line);margin:16px 0}
 .queue li .dy{font-weight:400;font-size:12px}
 .queue li button{background:none;border:0;color:var(--wait);font-size:20px;padding:2px 8px;line-height:1}
 .foot{display:flex;justify-content:space-between;gap:8px;margin-top:16px}
+.soldbar.new{display:flex;align-items:center;gap:8px;background:#ffd84d;color:#3d3000;letter-spacing:0;padding:5px 12px;font-size:13px}
+.soldbar.new .pill{background:#3d3000;color:#ffd84d;border-radius:99px;padding:0 9px;font-size:12px;font-weight:900}
+.soldbar.new .sp{flex:1}
+.card.sold.new{opacity:1;outline:2px solid #f2c200;outline-offset:-2px}
+.wknote{margin:2px 0 10px;font-size:14px;font-weight:800;color:var(--ink)}
+.wknote:empty{display:none}
+.wknote span{text-decoration:underline;text-decoration-color:#e53935;text-decoration-thickness:3px;text-underline-offset:5px}
+.warnbox{padding:12px 14px;border-radius:12px;background:#fff3cd;border:2px solid #e0a800;color:#5c4400;margin-bottom:12px}
+.warnbox b{display:block;font-size:15px;margin-bottom:4px}
+.warnbox .who{font-size:17px;font-weight:900;margin:2px 0 10px}
+.warnbox .btnrow{margin:0}
 .soldbox{padding:12px 14px;border-radius:12px;background:var(--surface-2);border:1px solid var(--line);font-weight:700;color:var(--ink-2)}
 .swatches{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .colchip{display:inline-flex;align-items:center;min-height:36px;padding:2px 12px;border-radius:99px;border:1px solid var(--line);background:var(--surface-2);font-size:13px;text-align:left}
@@ -283,6 +294,7 @@ body.busy .sheet .btn{opacity:.6;pointer-events:none}
   <header class="head">
     <div class="titlerow"><h1>CPO管理</h1><span class="tr-r"><button class="gear" id="gear" type="button">⚙ 選択肢の設定</button><span class="sync" id="sync"><i></i><span>接続中</span></span></span></div>
     <div class="stats" id="stats"></div>
+    <div class="wknote" id="wknote"></div>
     <div class="kf" id="kf"></div>
     <div class="search"><input id="q" type="search" placeholder="車種・車両No.・担当者・CPOで探す" autocomplete="off" aria-label="検索"></div>
   </header>
@@ -326,7 +338,8 @@ var DEFAULT_MASTER={
   models:[].concat(['UX200','UX250h','UX300e','NX200','NX250','NX300','NX300h','NX350','NX350h','NX450h+','RX200t','RX300','RX350','RX350h','RX450h','RX450h+','RX500h','LBX','LM500h','LX570','LX600','GX460','GX550','IS200t','IS250','IS300','IS300h','IS350','IS500','ES300h','RC200t','RC300','RC300h','RC350','RC F','LC500','LC500h','LS460','LS500','LS500h','LS600h','CT200h','RZ450e','RZ300e']).map(function(n){return {name:n,grades:[]}}),
   grades:['ベース','version L','F SPORT','F SPORT Performance','I package'],
   colors:[['ソニッククォーツ','#e8e5de'],['ホワイトノーヴァGF','#f2f1ed'],['ブラックマイカ','#1b1d20'],['グラファイトブラックGF','#25282c'],['ソニッククロム','#8f949a'],['ソニックチタニウム','#cdb98a'],['ソニックイリジウム','#d8dce0'],['シルバーメタリック','#c3c8ce'],['アストログレーメタリック','#6b7078'],['ソニックカッパー','#8c5a3d'],['ディープアズールMM','#1e3f73'],['レッドスピネル','#8e1c26'],['パッショネイトイエロー','#e9c21c']].map(function(p){return {name:p[0],hex:p[1]}}),
-  equip:['ムーンルーフ','フロントスポイラー','サイドスポイラー','リヤスポイラー']
+  equip:['ムーンルーフ','フロントスポイラー','サイドスポイラー','リヤスポイラー'],
+  note:'※展示店舗の商談優先'
 };
 function seriesFromModels(models){
   var out=[],idx={};
@@ -359,7 +372,7 @@ function equipDisplay(list){
 
 /* ---------- Firebase（Firestore）: 車両1台 = 1ドキュメント。ドキュメントID = 車両No. ---------- */
 var inflight=0, db=null, col=null, unsub=null;
-function norm(id,d){return Object.assign({queue:[],equip:[],deal:null,status:'stock',order:0,kind:'',km:null},d,{id:id})}
+function norm(id,d){return Object.assign({queue:[],equip:[],deal:null,status:'stock',order:0,kind:'',km:null,soldBy:'',soldAt:'',soldAtMs:0},d,{id:id})}
 var fbFail=function(msg){return {ok:false,msg:msg}};
 var fbOk=function(x){var o={ok:true};for(var k in (x||{}))o[k]=x[k];return o};
 var cleanStaff=function(s){return String(s||'').trim().slice(0,20)};
@@ -437,6 +450,7 @@ function handle(action,p){
         order:Number(src.order)||0,status:src.status==='sold'?'sold':'stock',
         deal:(src.deal&&src.deal.staff&&src.deal.until)?{staff:cleanStaff(src.deal.staff),days:cleanDays(src.deal.days)||1,startedAt:String(src.deal.startedAt||''),until:String(src.deal.until)}:null,
         queue:(src.queue||[]).map(function(q){return {id:String(q.id||qid()),staff:cleanStaff(q.staff),days:cleanDays(q.days)||1}}).filter(function(q){return q.staff}).slice(0,20),
+        soldBy:String(src.soldBy||'').slice(0,40),soldAt:String(src.soldAt||'').slice(0,10),soldAtMs:Number(src.soldAtMs)||0,
         createdAt:Number(src.createdAt)||Date.now()
       },rf);
       return col.doc(rf.plate).set(rc).then(function(){return fbOk({})});
@@ -472,11 +486,11 @@ function handle(action,p){
     case 'sold':
       return mutate(p.id,function(c){
         if(c.status==='sold')return fbFail('すでに売約済みです');
-        var prev=clone(c);c.status='sold';c.deal=null;c.queue=[];
+        var prev=clone(c);c.soldBy=c.deal?c.deal.staff:'';c.soldAt=todayStr();c.soldAtMs=Date.now();c.status='sold';c.deal=null;c.queue=[];
         return {prev:prev};
       });
     case 'restock':
-      return mutate(p.id,function(c){c.status='stock'});
+      return mutate(p.id,function(c){c.status='stock';c.soldBy='';c.soldAt='';c.soldAtMs=0});
     case 'extend':
       return mutate(p.id,function(c){
         if(!c.deal)return fbFail('すでに商談は終了しています');
@@ -519,6 +533,7 @@ function applyMaster(data){
   var m=clone(DEFAULT_MASTER);
   if(data){
     ['grades','colors','equip'].forEach(function(k){if(Array.isArray(data[k]))m[k]=data[k]});
+    if(typeof data.note==='string')m.note=data.note;
     if(Array.isArray(data.series))m.series=data.series;
     else if(Array.isArray(data.models))m.series=seriesFromModels(data.models);
   }
@@ -563,14 +578,20 @@ function rememberStaff(n){
 /* ---------- derive ---------- */
 var byOrder=function(a,b){return (a.order||0)-(b.order||0)||String(a.id).localeCompare(String(b.id))};
 function hay(c){return [kindName(c.kind),c.model,c.plate,c.grade,c.year,c.color,equipDisplay(c.equip).join(' '),c.deal&&c.deal.staff,(c.queue||[]).map(function(q){return q.staff}).join(' ')].join(' ').toLowerCase()}
+var DAY_MS=86400000;
+function isRecentSold(c){return c.status==='sold'&&c.soldAtMs>0&&Date.now()-c.soldAtMs<DAY_MS}
+function fmtSold(c){
+  if(c.soldAtMs>0){var d=new Date(c.soldAtMs),z=function(n){return n<10?'0'+n:''+n};return (d.getMonth()+1)+'/'+d.getDate()+' '+z(d.getHours())+':'+z(d.getMinutes())}
+  return (c.soldAt&&parseD(c.soldAt))?fmtMD(parseD(c.soldAt)):'';
+}
 function sections(){
   var q=state.q.trim().toLowerCase();
   var f=q?state.cars.filter(function(c){return hay(c).indexOf(q)>=0}):state.cars.slice();
   if(state.kf)f=f.filter(function(c){return c.kind===state.kf});
   return {
-    deal:f.filter(function(c){return c.status!=='sold'&&c.deal}).sort(sorter()),
+    deal:f.filter(isRecentSold).sort(function(a,b){return b.soldAtMs-a.soldAtMs}).concat(f.filter(function(c){return c.status!=='sold'&&c.deal}).sort(sorter())),
     stock:f.filter(function(c){return c.status!=='sold'&&!c.deal}).sort(sorter()),
-    sold:f.filter(function(c){return c.status==='sold'}).sort(sorter())
+    sold:f.filter(function(c){return c.status==='sold'&&!isRecentSold(c)}).sort(sorter())
   };
 }
 var canDrag=function(){return !state.q.trim()&&!state.kf&&!state.readOnly&&state.sort==='manual'};
@@ -619,7 +640,8 @@ function colorHTML(c){
 }
 function cardHTML(c){
   var sold=c.status==='sold',d=c.deal,bar='';
-  if(sold)bar='<div class="soldbar">売約済み</div>';
+  if(sold&&isRecentSold(c))bar='<div class="soldbar new"><span class="pill">成約</span>'+(c.soldBy?'<span>担当：<b>'+esc(c.soldBy)+'</b></span>':'')+'<span class="sp"></span><span>'+esc(fmtSold(c))+'</span></div>';
+  else if(sold)bar='<div class="soldbar">売約済み'+(c.soldBy?'　<span style="letter-spacing:0">担当：'+esc(c.soldBy)+'</span>':'')+(fmtSold(c)?'　<span style="letter-spacing:0">'+esc(fmtSold(c))+'</span>':'')+'</div>';
   else if(d){
     var r=remain(d.until);
     bar='<div class="dealbar"><span class="pill">商談中</span><span class="lbl">担当</span><b class="staff">'+esc(d.staff)+'</b><span class="sp"></span><span class="until">〜'+fmtMD(parseD(d.until))+'</span><span class="left '+r.cls+'">'+r.t+'</span></div>';
@@ -628,7 +650,7 @@ function cardHTML(c){
   var qbar=(q.length&&!sold)?'<div class="queuebar"><b>順番待ち '+q.length+'名</b><span>'+q.map(function(x,i){return (i+1)+' '+esc(x.staff)}).join('　')+'</span></div>':'';
   var eq='<div class="eqline">'+equipDisplay(c.equip).map(function(e){return '<span class="eq">'+esc(e)+'</span>'}).join('')+'</div>';
   var sub=subLine(c);
-  return '<div class="card'+(d&&!sold?' deal':'')+(sold?' sold':'')+'" data-id="'+esc(c.id)+'" role="button" tabindex="0" aria-label="'+esc(c.model)+'">'+bar+
+  return '<div class="card'+(d&&!sold?' deal':'')+(sold?' sold':'')+(sold&&isRecentSold(c)?' new':'')+'" data-id="'+esc(c.id)+'" role="button" tabindex="0" aria-label="'+esc(c.model)+'">'+bar+
     '<div class="main"><div class="info"><div class="l2">'+kindHTML(c)+(c.plate?'<span class="plate">No.'+esc(c.plate)+'</span>':'')+cmHTML(c)+(c.sample?'<span class="tag-sample">サンプル</span>':'')+'</div>'+'<div class="l1">'+(yearText(c.year)?'<span class="sub">'+esc(yearText(c.year))+'</span>':'')+'<span class="model">'+esc(c.model)+'</span>'+(c.grade?'<span class="sub">'+esc(c.grade)+'</span>':'')+'</div>'+
     eq+'</div>'+
     '<div class="price">'+priceHTML(c)+'</div></div>'+qbar+'</div>';
@@ -653,6 +675,8 @@ function renderHead(){
   var dealN=state.cars.filter(function(c){return c.status!=='sold'&&c.deal}).length;
   var wait=state.cars.reduce(function(s,c){return s+(c.status!=='sold'?(c.queue||[]).length:0)},0);
   $('#stats').innerHTML='<div class="stat"><b>'+stock+'</b><span>在庫 台</span></div><div class="stat deal"><b>'+dealN+'</b><span>商談中 台</span></div><div class="stat wait"><b>'+wait+'</b><span>順番待ち 名</span></div>';
+  var wd=today().getDay(),wk=$('#wknote'),nt=(state.master&&state.master.note||'').trim();
+  if(wk)wk.innerHTML=((wd===0||wd===6)&&nt)?'<span>'+esc(nt)+'</span>':'';
   var kfEl=$('#kf');
   if(kfEl)kfEl.innerHTML=[['','すべて'],['CPO','CPO'],['UCAR','U-Car']].map(function(p){var n=p[0]?state.cars.filter(function(c){return c.status!=='sold'&&c.kind===p[0]}).length:stock;return '<button type="button" class="chip'+(state.kf===p[0]?' on':'')+'" data-kf="'+p[0]+'">'+p[1]+' '+n+'</button>'}).join('')+'<select id="sortSel" class="sortsel" aria-label="並び順">'+SORTS.map(function(o){return '<option value="'+o[0]+'"'+(state.sort===o[0]?' selected':'')+'>'+o[1]+'</option>'}).join('')+'</select>';
   var s=$('#sync');
@@ -685,12 +709,12 @@ function renderList(){
 }
 
 /* ---------- toast ---------- */
-function toast(msg,undo){
+function toast(msg,undo,ms){
   var t=$('#toast');clearTimeout(toastTimer);
   t.innerHTML='<span>'+esc(msg)+'</span>'+(undo?'<button type="button">元に戻す</button>':'');
   t.hidden=false;
   if(undo)t.querySelector('button').onclick=function(){t.hidden=true;undo()};
-  toastTimer=setTimeout(function(){t.hidden=true},undo?7000:3200);
+  toastTimer=setTimeout(function(){t.hidden=true},ms||(undo?7000:3200));
 }
 
 /* ---------- sheet ---------- */
@@ -737,13 +761,17 @@ function viewHTML(c){
   if((c.equip||[]).length)h+='<div class="eqwrap">'+equipDisplay(c.equip).map(function(e){return '<span class="eq">'+esc(e)+'</span>'}).join('')+'</div>';
   h+='<hr>';
   if(sold){
-    h+='<div class="soldbox">売約済みの車両です</div>';
+    h+='<div class="soldbox">売約済みの車両です'+(c.soldBy?'<div style="margin-top:4px;font-weight:900;color:var(--ink)">商談担当：'+esc(c.soldBy)+(fmtSold(c)?'　<span style="font-weight:700">'+esc(fmtSold(c))+' 成約</span>':'')+'</div>':'')+'</div>';
     if(!ro)h+='<div class="btnrow"><button class="btn btn-primary" type="button" data-act="restock">在庫に戻す</button></div>';
   }else{
     if(d){
       var r=remain(d.until);
       h+='<div class="dealbox"><div class="meta"><span>商談中</span><span class="big">'+esc(d.staff)+'</span><span>〜'+fmtMD(parseD(d.until))+'</span><span class="left '+r.cls+'">'+r.t+'</span></div>';
-      if(!ro)h+='<div class="ext"><span>期間を延ばす</span><button type="button" class="chip" data-act="extend" data-v="1">+1日</button><button type="button" class="chip" data-act="extend" data-v="3">+3日</button></div>';
+      if(!ro&&sheetState.ext&&q.length){
+        h+='<div class="warnbox"><b>⚠ 順番待ちの方に必ず連絡してください</b><div class="who">'+q.map(function(x){return esc(x.staff)+'さん'}).join('、')+'</div>'+
+          '<div class="note" style="color:inherit;margin-bottom:8px">延長すると、順番待ちの方の開始が遅れます。</div>'+
+          '<div class="btnrow"><button class="btn btn-primary" type="button" data-act="extendGo" data-v="'+sheetState.ext+'">連絡する。+'+sheetState.ext+'日延長する</button><button class="btn" type="button" data-act="extendCancel">やめる</button></div></div>';
+      }else if(!ro)h+='<div class="ext"><span>期間を延ばす</span><button type="button" class="chip" data-act="extend" data-v="1">+1日</button><button type="button" class="chip" data-act="extend" data-v="3">+3日</button></div>';
       h+='</div>';
       if(!ro)h+='<div class="btnrow" style="margin:0 0 14px"><button class="btn" type="button" data-act="endDeal">商談を終了</button><button class="btn btn-primary" type="button" data-act="sold">成約にする</button></div>';
     }
@@ -892,7 +920,7 @@ function endDeal(){
 }
 function markSold(){
   var c=cur();if(!c)return;
-  run('sold',{id:c.id},function(r){closeSheet();toast('成約（売約済み）にしました',function(){undo(r.prev)})});
+  run('sold',{id:c.id},function(r){closeSheet();toast('成約にしました',function(){undo(r.prev)})});
 }
 function restock(){
   var c=cur();if(!c)return;
@@ -900,7 +928,13 @@ function restock(){
 }
 function extend(n){
   var c=cur();if(!c||!c.deal)return;
-  run('extend',{id:c.id,n:n},function(){});
+  var names=(c.queue||[]).map(function(x){return x.staff+'さん'}).join('、');
+  run('extend',{id:c.id,n:n},function(){if(sheetState)delete sheetState.ext;refreshSheet(true);if(names)toast('延長しました。'+names+'に必ず連絡してください',null,9000)});
+}
+function askExtend(n){
+  var c=cur();if(!c||!c.deal)return;
+  if((c.queue||[]).length){sheetState.ext=n;refreshSheet(true)}
+  else extend(n);
 }
 function rmQueue(qid){
   var c=cur();if(!c)return;
@@ -934,7 +968,7 @@ function mrow(l,i,s,m,mid){
 function listOpen(l,s,m){return '<div class="mlist"'+pa(l,s,m)+'>'}
 function settingsHTML(){
   var h='<div class="sh-top"><h2 class="fh">選択肢の設定</h2><span class="sp"></span><button class="btn btn-ghost sm" type="button" data-act="msCancel">キャンセル</button></div>'+
-    '<div class="chips">'+[['model','車種・モデル・グレード'],['color','ボディカラー'],['equip','装備品']].map(function(t){return '<button type="button" class="chip'+(msTabV===t[0]?' on':'')+'" data-act="msTab" data-v="'+t[0]+'">'+t[1]+'</button>'}).join('')+'</div>'+
+    '<div class="chips">'+[['model','車種・モデル・グレード'],['color','ボディカラー'],['equip','装備品'],['note','表示文言']].map(function(t){return '<button type="button" class="chip'+(msTabV===t[0]?' on':'')+'" data-act="msTab" data-v="'+t[0]+'">'+t[1]+'</button>'}).join('')+'</div>'+
     '<div class="note" style="margin-top:8px">左の「≡」を押したまま上下に動かすと並べ替えできます。</div>';
   if(msTabV==='model'){
     h+='<div class="msh">車種（UX・NX・RXなど）</div>'+listOpen('series');
@@ -965,6 +999,9 @@ function settingsHTML(){
       h+='<div class="mit" data-i="'+i+'">'+mrow('colors',i,null,null,'<input type="color" data-ml="colors" data-i="'+i+'" data-k="hex" value="'+esc(/^#[0-9a-fA-F]{6}$/.test(c.hex)?c.hex:'#888888')+'">'+textIn('colors',i,c.name,null,null,'name','例：ホワイトノーヴァ(GF)'))+'</div>';
     });
     h+='</div><button type="button" class="btn sm" data-act="msAdd" data-l="colors">＋ 色を追加</button>';
+  }else if(msTabV==='note'){
+    h+='<div class="msh">土日の注意書き</div><div class="note">土曜・日曜だけ、在庫台数の下に赤い下線つきで表示されます。空欄にすると表示されません。</div>'+
+      '<input type="text" id="msNote" data-mn="note" maxlength="60" style="margin-top:8px" value="'+esc(ms.note||'')+'" placeholder="例：※展示店舗の商談優先" autocomplete="off">';
   }else{
     h+='<div class="msh">装備品（車両追加画面にボタンで出ます）</div>'+listOpen('equip');
     ms.equip.forEach(function(e,i){h+='<div class="mit" data-i="'+i+'">'+mrow('equip',i,null,null,textIn('equip',i,e,null,null,'','装備名'))+'</div>'});
@@ -1007,7 +1044,7 @@ function msAct(a,b){
 function uniq(a){var s={};return a.filter(function(x){if(!x||s[x])return false;s[x]=1;return true})}
 async function msSave(){
   var trim=function(g){return String(g).trim()};
-  var out={series:[],models:[],grades:uniq(ms.grades.map(trim)),colors:[],equip:uniq(ms.equip.map(trim))};
+  var out={series:[],models:[],grades:uniq(ms.grades.map(trim)),colors:[],equip:uniq(ms.equip.map(trim)),note:trim(ms.note||'').slice(0,60)};
   var sm={};
   ms.series.forEach(function(se){
     var sn=trim(se.name);if(!sn)return;
@@ -1099,7 +1136,9 @@ sheet.addEventListener('click',function(e){
   else if(a==='endDeal')endDeal();
   else if(a==='sold')markSold();
   else if(a==='restock')restock();
-  else if(a==='extend')extend(Number(v));
+  else if(a==='extend')askExtend(Number(v));
+  else if(a==='extendGo')extend(Number(v));
+  else if(a==='extendCancel'){delete sheetState.ext;refreshSheet(true)}
   else if(a==='rmQueue')rmQueue(v);
   else if(a==='delete')deleteCurrent();
   else if(a==='pickColor'){form.color=(form.color===v?'':v);$('#f-color').value=form.color;renderSwatches()}
@@ -1132,6 +1171,7 @@ sheet.addEventListener('change',function(e){
 });
 sheet.addEventListener('input',function(e){
   var t=e.target;
+  if(t.dataset.mn){ms.note=t.value;return}
   if(t.dataset.ml){
     var arr=msArr(t.dataset.ml,t.dataset.s,t.dataset.m),ix=+t.dataset.i;
     if(t.dataset.ml==='series'||t.dataset.ml==='models'||t.dataset.ml==='colors')arr[ix][t.dataset.k||'name']=t.value;else arr[ix]=t.value;
@@ -1268,7 +1308,8 @@ function commitOrder(list){
 /* ---------- boot ---------- */
 lastDay=ymd(today());
 try{var sv=localStorage.getItem('cpo-sort');if(sv&&SORTS.some(function(o){return o[0]===sv}))state.sort=sv}catch(x){}
-setInterval(function(){var k=ymd(today());if(k!==lastDay){lastDay=k;render()}},60000);
+var lastRecentN=-1;
+setInterval(function(){var k=ymd(today()),rn=state.cars.filter(isRecentSold).length;if(k!==lastDay||rn!==lastRecentN){lastDay=k;lastRecentN=rn;render()}},60000);
 document.addEventListener('visibilitychange',function(){if(!document.hidden){lastDay=ymd(today());render()}});
 render();
 connect();
